@@ -172,8 +172,30 @@ class LEDDisplayUI:
                             start_color, end_color, metric = split_color
                             factor=elapsed_time/(self.cycle_duration*2)
                         else:
-                            start_color, end_color = split_color
-                            factor=abs(elapsed_time-self.cycle_duration)/(self.cycle_duration)
+                            colors_list = split_color
+                            num_colors = len(colors_list)
+                            
+                            if num_colors >= 2:
+                                # Add first color to the end to make a loop
+                                if colors_list[0] != colors_list[-1]:
+                                    colors_list.append(colors_list[0])
+                                
+                                num_segments = len(colors_list) - 1
+                                total_duration = self.cycle_duration
+                                time_in_cycle = (current_time - self.start_time) % total_duration
+                                
+                                segment_duration = total_duration / num_segments
+                                segment_index = min(int(time_in_cycle / segment_duration), num_segments - 1)
+                                
+                                start_color = colors_list[segment_index]
+                                end_color = colors_list[segment_index + 1]
+                                
+                                time_in_segment = time_in_cycle - (segment_index * segment_duration)
+                                factor = time_in_segment / segment_duration
+                            else:
+                                start_color = colors_list[0]
+                                end_color = colors_list[0]
+                                factor = 0
                         color = interpolate_color(start_color=start_color, end_color=end_color, factor=factor)
                     self.set_ui_color(index, color="#"+color)
             except Exception as e:

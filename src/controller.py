@@ -386,11 +386,37 @@ class Controller:
                                 max_val = self.metrics_max_value[metric]
                                 factor = (metric_value - min_val) / (max_val - min_val)
                                 factor = max(0, min(1, factor)) # Clamp factor between 0 and 1
+                        colors.append(interpolate_color(start_color, end_color, factor))
                     else:
-                        start_color, end_color = split_color
-                        factor = 1 - abs((self.cpt % self.cycle_duration) - (self.cycle_duration / 2)) / (self.cycle_duration / 2)
-                    
-                    colors.append(interpolate_color(start_color, end_color, factor))
+                        colors_list = split_color
+                        num_colors = len(colors_list)
+                        
+                        if num_colors >= 2:
+                            # Add first color to the end to make a loop
+                            if colors_list[0] != colors_list[-1]:
+                                colors_list.append(colors_list[0])
+                            
+                            num_segments = len(colors_list) - 1
+                            total_duration = self.cycle_duration # number of steps
+                            time_in_cycle = self.cpt % total_duration
+                            
+                            if num_segments > 0:
+                                segment_duration = total_duration / num_segments
+                                segment_index = min(int(time_in_cycle / segment_duration), num_segments - 1)
+                                
+                                start_color = colors_list[segment_index]
+                                end_color = colors_list[segment_index + 1]
+                                
+                                time_in_segment = time_in_cycle - (segment_index * segment_duration)
+                                if segment_duration > 0:
+                                    factor = time_in_segment / segment_duration
+                                else:
+                                    factor = 0
+                                colors.append(interpolate_color(start_color, end_color, factor))
+                            else:
+                                colors.append(colors_list[0])
+                        else:
+                            colors.append(colors_list[0])
                 else:
                     colors.append(color)
         return np.array(colors)

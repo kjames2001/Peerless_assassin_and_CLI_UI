@@ -565,7 +565,7 @@ quick_presets() {
             echo -e "${GREEN}Gaming Mode preset applied${NC}"
             ;;
         2)
-            local gradient="ff0000-ff00ff"
+            local gradient="ff0000-ffff00-00ff00-00ffff-0000ff-ff00ff-ff0000"
             local json_array=$(for i in $(seq 1 84); do echo -n "\"${gradient}\","; done | sed 's/.$//')
             jq --argjson colors "[$json_array]" '.metrics.colors = $colors | .time.colors = $colors' "$CONFIG_FILE" > "${CONFIG_FILE}.tmp" && mv "${CONFIG_FILE}.tmp" "$CONFIG_FILE"
             echo -e "${GREEN}RGB Rainbow preset applied${NC}"
