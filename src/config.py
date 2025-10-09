@@ -53,6 +53,7 @@ NUMBER_OF_LEDS = 84
 
 default_config = {
     "display_mode": "alternate_time_with_seconds",
+    "gpu_vendor": "nvidia",
     "metrics": {
         "colors": [
             "random",

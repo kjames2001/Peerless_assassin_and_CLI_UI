@@ -49,29 +49,6 @@ show_display_modes_menu() {
     echo -e "${CYAN}║     Select Display Mode                                ║${NC}"
     echo -e "${CYAN}╚════════════════════════════════════════════════════════╝${NC}"
     echo ""
-    echo -e "${GREEN}1)${NC} dual_metrics         - Show CPU & GPU metrics simultaneously"
-    echo -e "${GREEN}2)${NC} peerless_standard - Peerless Assassin 120 standard display"
-    echo -e "${GREEN}3)${NC} peerless_temp     - Temperature focus mode"
-    echo -e "${GREEN}4)${NC} peerless_usage    - Usage focus mode"
-    echo -e "${GREEN}5)${NC} debug_ui          - Debug mode (all LEDs on)"
-    echo ""
-    echo -e "${MAGENTA}Small Layout Modes:${NC}"
-    echo -e "${GREEN}8)${NC} alternate_metrics - Cycle through CPU/GPU temp/usage"
-    echo -e "${GREEN}9)${NC} cpu_temp        - Show CPU temperature only"
-    echo -e "${GREEN}10)${NC} gpu_temp        - Show GPU temperature only"
-    echo -e "${GREEN}11)${NC} cpu_usage       - Show CPU usage only"
-    echo -e "${GREEN}12)${NC} gpu_usage       - Show GPU usage only"
-    echo ""
-    echo -e "${GREEN}0)${NC} Back to main menu"
-    echo ""
-}
-
-show_display_modes_menu() {
-    clear
-    echo -e "${CYAN}╔══════════════════════════════════════════════════════╗${NC}"
-    echo -e "${CYAN}║     Select Display Mode                              ║${NC}"
-    echo -e "${CYAN}╚══════════════════════════════════════════════════════╝${NC}"
-    echo ""
     echo -e "${MAGENTA}Big Layout Modes (84 LEDs):${NC}"
     echo -e "${GREEN}1)${NC} dual_metrics         - Show CPU & GPU metrics simultaneously"
     echo -e "${GREEN}2)${NC} peerless_standard    - Peerless Assassin 120 standard display"
@@ -140,7 +117,7 @@ show_color_menu() {
     echo -e "${GREEN}2)${NC} Set CPU LEDs Color"
     echo -e "${GREEN}3)${NC} Set GPU LEDs Color"
     echo -e "${GREEN}4)${NC} Set Color Gradient (Animated)"
-    echo -e "${GREEN}5)${NC} Set Metric-Based Colors (Temperature/Usage)"
+    echo -e "${GREEN}5)${NC} Set Metric-Based Color Gradient"
     echo -e "${GREEN}6)${NC} Set Random Colors"
     echo -e "${GREEN}7)${NC} Set Time-Based Gradient"
     echo -e "${GREEN}8)${NC} Color Presets"
@@ -164,8 +141,13 @@ get_color_input() {
     local color
 
     while true; do
-        read -p "$prompt (hex format, e.g., ff0000 for red): " color
-        color=${color#\#}  # Remove # if present
+        read -p "$prompt (hex format, e.g., ff0000 for red, or 'done'): " color
+        color=${color#\#}
+
+        if [ "$color" == "done" ]; then
+            echo "done"
+            return 0
+        fi
 
         if validate_hex_color "$color"; then
             echo "$color"
@@ -179,7 +161,8 @@ get_color_input() {
 # Function to set all LEDs to a single color
 set_all_leds_color() {
     local color=$(get_color_input "Enter color")
-    local context="$1"  # "metrics" or "time"
+    if [ "$color" == "done" ]; then return; fi
+    local context="$1"
 
     if [ -z "$context" ]; then
         read -p "Apply to (1) Metrics mode, (2) Time mode, (3) Both? " ctx_choice
@@ -191,7 +174,7 @@ set_all_leds_color() {
         esac
     fi
 
-    local json_color_array=$(printf ""%s"," $(for i in $(seq 1 84); do echo $color; done) | sed 's/.$//')
+    local json_color_array=$(printf "\"%s\"," $(for i in $(seq 1 84); do echo $color; done) | sed 's/.$//')
 
     if [ "$context" = "both" ] || [ "$context" = "metrics" ]; then
         jq --argjson colors "[$json_color_array]" '.metrics.colors = $colors' "$CONFIG_FILE" > "${CONFIG_FILE}.tmp" && mv "${CONFIG_FILE}.tmp" "$CONFIG_FILE"
@@ -228,28 +211,85 @@ set_led_range_color() {
     jq --argjson colors "$new_colors" ".${context}.colors = \$colors" "$CONFIG_FILE" > "${CONFIG_FILE}.tmp" && mv "${CONFIG_FILE}.tmp" "$CONFIG_FILE"
 }
 
+# Function to set metric-based color gradients
+set_metric_gradient() {
+    echo ""
+    echo "Select metric:"
+    echo "1) cpu_temp"
+    echo "2) cpu_usage"
+    echo "3) gpu_temp"
+    echo "4) gpu_usage"
+    read -p "Select metric: " metric_choice
+
+    case $metric_choice in
+        1) metric="cpu_temp" ;;
+        2) metric="cpu_usage" ;;
+        3) metric="gpu_temp" ;;
+        4) metric="gpu_usage" ;;
+        *) echo -e "${RED}Invalid choice${NC}"; return ;;
+    esac
+
+    local gradient_string="$metric"
+    local stop_counter=1
+
+    while true; do
+        echo ""
+        echo "Configure stop $stop_counter:"
+        local color=$(get_color_input "Enter color (or type 'done')")
+        if [ "$color" == "done" ]; then
+            break
+        fi
+
+        read -p "Enter value for this color stop: " value
+        if ! [[ "$value" =~ ^[0-9]+$ ]]; then
+            echo -e "${RED}Invalid value. Please enter a number.${NC}"
+            continue
+        fi
+
+        gradient_string+=";${color}:${value}"
+        stop_counter=$((stop_counter + 1))
+    done
+
+    if [ "$stop_counter" -lt 2 ]; then
+        echo -e "${RED}You must define at least one color stop.${NC}"
+        sleep 2
+        return
+    fi
+
+    local json_array=$(for i in $(seq 1 84); do echo -n "\"${gradient_string}\","; done | sed 's/.$//')
+    jq --argjson colors "[$json_array]" '.metrics.colors = $colors' "$CONFIG_FILE" > "${CONFIG_FILE}.tmp" && mv "${CONFIG_FILE}.tmp" "$CONFIG_FILE"
+
+    echo -e "${GREEN}Metric-based gradient applied for $metric${NC}"
+    sleep 2
+}
+
+# Function to change LED colors
 # Function to change LED colors
 change_led_colors() {
     show_color_menu
-    read -p "Select option (0-7): " choice
+    read -p "Select option (0-8): " choice
 
     case $choice in
         1) set_all_leds_color ;;
         2)
             color=$(get_color_input "Enter CPU LEDs color")
+            if [ "$color" == "done" ]; then return; fi
             set_led_range_color 0 41 "$color" "metrics"
             echo -e "${GREEN}CPU LEDs color updated${NC}"
             sleep 2
             ;;
         3)
             color=$(get_color_input "Enter GPU LEDs color")
+            if [ "$color" == "done" ]; then return; fi
             set_led_range_color 42 83 "$color" "metrics"
             echo -e "${GREEN}GPU LEDs color updated${NC}"
             sleep 2
             ;;
         4)
             color1=$(get_color_input "Enter start color")
+            if [ "$color1" == "done" ]; then return; fi
             color2=$(get_color_input "Enter end color")
+            if [ "$color2" == "done" ]; then return; fi
             gradient="${color1}-${color2}"
 
             read -p "Apply to (1) Metrics, (2) Time, (3) Both? " ctx
@@ -260,8 +300,7 @@ change_led_colors() {
                 *) echo -e "${RED}Invalid choice${NC}"; return ;;
             esac
 
-            local json_gradient=$(printf '"%s-%s",' $color1 $color2 | sed 's/.$//')
-            local json_array=$(for i in $(seq 1 84); do echo -n "\"${gradient}\","; done | sed 's/,$//')
+            local json_array=$(for i in $(seq 1 84); do echo -n "\"${gradient}\","; done | sed 's/.$//')
 
             if [ "$context" = "both" ] || [ "$context" = "metrics" ]; then
                 jq --argjson colors "[$json_array]" '.metrics.colors = $colors' "$CONFIG_FILE" > "${CONFIG_FILE}.tmp" && mv "${CONFIG_FILE}.tmp" "$CONFIG_FILE"
@@ -274,34 +313,7 @@ change_led_colors() {
             echo -e "${GREEN}Gradient applied: $color1 → $color2${NC}"
             sleep 2
             ;;
-        5)
-            echo ""
-            echo "Metric options:"
-            echo "1) cpu_temp"
-            echo "2) cpu_usage"
-            echo "3) gpu_temp"
-            echo "4) gpu_usage"
-            read -p "Select metric: " metric_choice
-
-            case $metric_choice in
-                1) metric="cpu_temp" ;;
-                2) metric="cpu_usage" ;;
-                3) metric="gpu_temp" ;;
-                4) metric="gpu_usage" ;;
-                *) echo -e "${RED}Invalid choice${NC}"; return ;;
-            esac
-
-            color1=$(get_color_input "Enter low value color")
-            color2=$(get_color_input "Enter high value color")
-
-            gradient="${color1}-${color2}-${metric}"
-            local json_array=$(for i in $(seq 1 84); do echo -n "\"${gradient}\","; done | sed 's/,$//')
-
-            jq --argjson colors "[$json_array]" '.metrics.colors = $colors' "$CONFIG_FILE" > "${CONFIG_FILE}.tmp" && mv "${CONFIG_FILE}.tmp" "$CONFIG_FILE"
-
-            echo -e "${GREEN}Metric-based gradient applied for $metric${NC}"
-            sleep 2
-            ;;
+        5) set_metric_gradient ;;
         6)
             read -p "Apply to (1) Metrics, (2) Time, (3) Both? " ctx
             case $ctx in
@@ -311,7 +323,7 @@ change_led_colors() {
                 *) echo -e "${RED}Invalid choice${NC}"; return ;;
             esac
 
-            local json_array=$(for i in $(seq 1 84); do echo -n "\"random\","; done | sed 's/,$//')
+            local json_array=$(for i in $(seq 1 84); do echo -n "\"random\","; done | sed 's/.$//')
 
             if [ "$context" = "both" ] || [ "$context" = "metrics" ]; then
                 jq --argjson colors "[$json_array]" '.metrics.colors = $colors' "$CONFIG_FILE" > "${CONFIG_FILE}.tmp" && mv "${CONFIG_FILE}.tmp" "$CONFIG_FILE"
@@ -336,18 +348,25 @@ change_led_colors() {
                 1) time_unit="seconds" ;;
                 2) time_unit="minutes" ;;
                 3) time_unit="hours" ;;
-                *) echo -e "${RED}Invalid choice${NC}"; return ;;
+                *)
+                    echo -e "${RED}Invalid choice${NC}"
+                    sleep 2
+                    return
+                    ;;
             esac
 
             color1=$(get_color_input "Enter start color")
+            if [ "$color1" == "done" ]; then return; fi
+
             color2=$(get_color_input "Enter end color")
+            if [ "$color2" == "done" ]; then return; fi
 
             gradient="${color1}-${color2}-${time_unit}"
-            local json_array=$(for i in $(seq 1 84); do echo -n ""${gradient}","; done | sed 's/,$//')
+            local json_array=$(for i in $(seq 1 84); do echo -n "\"${gradient}\","; done | sed 's/.$//')
 
             jq --argjson colors "[$json_array]" '.time.colors = $colors' "$CONFIG_FILE" > "${CONFIG_FILE}.tmp" && mv "${CONFIG_FILE}.tmp" "$CONFIG_FILE"
 
-            echo -e "${GREEN}Time-based gradient applied${NC}"
+            echo -e "${GREEN}Time-based gradient applied (${time_unit})${NC}"
             sleep 2
             ;;
         8) color_presets ;;
@@ -373,11 +392,13 @@ color_presets() {
     echo -e "${GREEN}5)${NC} Yellow"
     echo -e "${GREEN}6)${NC} Cyan"
     echo -e "${GREEN}7)${NC} Magenta"
+    echo -e "${GREEN}8)${NC} Temperature Gradient Preset"
+    echo -e "${GREEN}9)${NC} Usage Gradient Preset"
     echo ""
     echo -e "${GREEN}0)${NC} Back to color menu"
     echo ""
 
-    read -p "Select preset (0-7): " choice
+    read -p "Select preset (0-9): " choice
 
     local color
     case $choice in
@@ -388,6 +409,26 @@ color_presets() {
         5) color="ffff00" ;;
         6) color="00ffff" ;;
         7) color="ff00ff" ;;
+        8)
+            # Temperature Gradient
+            local temp_gradient_cpu="cpu_temp;0000ff:30;00ff00:40;ffff00:60;ff00ff:70;ff0000:80"
+            local temp_gradient_gpu="gpu_temp;0000ff:30;00ff00:40;ffff00:60;ff00ff:70;ff0000:80"
+            set_led_range_color 0 41 "$temp_gradient_cpu" "metrics"
+            set_led_range_color 42 83 "$temp_gradient_gpu" "metrics"
+            echo -e "${GREEN}Temperature gradient preset applied${NC}"
+            sleep 2
+            return
+            ;;
+        9)
+            # Usage Gradient
+            local usage_gradient_cpu="cpu_usage;0000ff:10;00ff00:35;ffff00:55;ff00ff:75;ff8c00:85;ff0000:100"
+            local usage_gradient_gpu="gpu_usage;0000ff:10;00ff00:35;ffff00:55;ff00ff:75;ff8c00:85;ff0000:100"
+            set_led_range_color 0 41 "$usage_gradient_cpu" "metrics"
+            set_led_range_color 42 83 "$usage_gradient_gpu" "metrics"
+            echo -e "${GREEN}Usage gradient preset applied${NC}"
+            sleep 2
+            return
+            ;;
         0) return ;;
         *) echo -e "${RED}Invalid choice${NC}"; sleep 2; return ;;
     esac
@@ -509,11 +550,13 @@ quick_presets() {
     echo -e "${GREEN}4)${NC} Cool Blue Theme"
     echo -e "${GREEN}5)${NC} Fire Theme (red-orange gradient)"
     echo -e "${GREEN}6)${NC} Matrix Theme (green)"
+    echo -e "${GREEN}7)${NC} Temperature Gradient Preset"
+    echo -e "${GREEN}8)${NC} Usage Gradient Preset"
     echo ""
     echo -e "${GREEN}0)${NC} Back to main menu"
     echo ""
 
-    read -p "Select preset (0-6): " choice
+    read -p "Select preset (0-8): " choice
 
     case $choice in
         1)
@@ -525,7 +568,7 @@ quick_presets() {
             ;;
         2)
             local gradient="ff0000-ff00ff"
-            local json_array=$(for i in $(seq 1 84); do echo -n "\"${gradient}\","; done | sed 's/,$//')
+            local json_array=$(for i in $(seq 1 84); do echo -n "\"${gradient}\","; done | sed 's/.$//')
             jq --argjson colors "[$json_array]" '.metrics.colors = $colors | .time.colors = $colors' "$CONFIG_FILE" > "${CONFIG_FILE}.tmp" && mv "${CONFIG_FILE}.tmp" "$CONFIG_FILE"
             echo -e "${GREEN}RGB Rainbow preset applied${NC}"
             ;;
@@ -541,7 +584,7 @@ quick_presets() {
             ;;
         5)
             local gradient="ff0000-ff8800"
-            local json_array=$(for i in $(seq 1 84); do echo -n "\"${gradient}\","; done | sed 's/,$//')
+            local json_array=$(for i in $(seq 1 84); do echo -n "\"${gradient}\","; done | sed 's/.$//')
             jq --argjson colors "[$json_array]" '.metrics.colors = $colors | .time.colors = $colors' "$CONFIG_FILE" > "${CONFIG_FILE}.tmp" && mv "${CONFIG_FILE}.tmp" "$CONFIG_FILE"
             echo -e "${GREEN}Fire Theme preset applied${NC}"
             ;;
@@ -549,6 +592,22 @@ quick_presets() {
             set_all_leds_color "metrics" <<< "00ff00"
             set_all_leds_color "time" <<< "00ff00"
             echo -e "${GREEN}Matrix Theme preset applied${NC}"
+            ;;
+        7)
+            # Temperature Gradient
+            local temp_gradient_cpu="cpu_temp;0000ff:30;00ff00:40;ffff00:60;ff00ff:70;ff0000:80"
+            local temp_gradient_gpu="gpu_temp;0000ff:30;00ff00:40;ffff00:60;ff00ff:70;ff0000:80"
+            set_led_range_color 0 41 "$temp_gradient_cpu" "metrics"
+            set_led_range_color 42 83 "$temp_gradient_gpu" "metrics"
+            echo -e "${GREEN}Temperature gradient preset applied${NC}"
+            ;;
+        8)
+            # Usage Gradient
+            local usage_gradient_cpu="cpu_usage;0000ff:10;00ff00:35;ffff00:55;ff00ff:75;ff8c00:85;ff0000:100"
+            local usage_gradient_gpu="gpu_usage;0000ff:10;00ff00:35;ffff00:55;ff00ff:75;ff8c00:85;ff0000:100"
+            set_led_range_color 0 41 "$usage_gradient_cpu" "metrics"
+            set_led_range_color 42 83 "$usage_gradient_gpu" "metrics"
+            echo -e "${GREEN}Usage gradient preset applied${NC}"
             ;;
         0) return ;;
         *)

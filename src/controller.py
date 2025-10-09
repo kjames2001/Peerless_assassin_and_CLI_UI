@@ -365,39 +365,67 @@ class Controller:
         else:
             colors = []
             for color in conf_colors:
-                if color.lower()=="random":
+                if color.lower() == "random":
                     colors.append(get_random_color())
+                elif ";" in color:  # New multi-stop gradient format
+                    parts = color.split(';')
+                    metric = parts[0]
+                    stops = []
+                    for stop in parts[1:]:
+                        stop_parts = stop.split(':')
+                        stops.append({'color': stop_parts[0], 'value': int(stop_parts[1])})
+                    
+                    stops.sort(key=lambda x: x['value'])
+                    
+                    if metric not in self.metrics.get_metrics(self.temp_unit):
+                        print(f"Warning: {metric} not found in metrics, using first color.")
+                        colors.append(stops[0]['color'])
+                        continue
+
+                    metric_value = self.metrics.get_metrics(self.temp_unit)[metric]
+
+                    if metric_value <= stops[0]['value']:
+                        colors.append(stops[0]['color'])
+                        continue
+                    
+                    if metric_value >= stops[-1]['value']:
+                        colors.append(stops[-1]['color'])
+                        continue
+
+                    for i in range(len(stops) - 1):
+                        if stops[i]['value'] <= metric_value < stops[i+1]['value']:
+                            start_stop = stops[i]
+                            end_stop = stops[i+1]
+                            factor = (metric_value - start_stop['value']) / (end_stop['value'] - start_stop['value'])
+                            colors.append(interpolate_color(start_stop['color'], end_stop['color'], factor))
+                            break
                 elif "-" in color:
                     split_color = color.split("-")
                     if len(split_color) == 3:
-                        start_color, end_color, key = split_color
+                        start_color, end_color, metric = split_color
                         current_time = datetime.datetime.now()
-                        if key == "seconds":
+                        if metric == "seconds":
                             factor = current_time.second / 59
-                        elif key == "minutes":
+                        elif metric == "minutes":
                             factor = current_time.minute / 59
-                        elif key == "hours":
+                        elif metric == "hours":
                             factor = current_time.hour / 23
                         else:
-                            metric = key
                             if metric not in self.metrics.get_metrics(self.temp_unit):
                                 print(f"Warning: {metric} not found in metrics, using start color.")
                                 factor = 0
-                            if self.metrics_min_value[metric] == self.metrics_max_value[metric]:
+                            elif self.metrics_min_value[metric] == self.metrics_max_value[metric]:
                                 print(f"Warning: {metric} min and max values are the same, using start color.")
                                 factor = 0
                             else:
-                                factor = (self.metrics.get_metrics(self.temp_unit)[metric]-self.metrics_min_value[metric]) / (self.metrics_max_value[metric]-self.metrics_min_value[metric])
-                                if factor > 1:
-                                    factor = 1
-                                    print(f"Warning: {metric} value exceeds max value, clamping to 1.")
-                                elif factor < 0:
-                                    factor = 0
-                                    print(f"Warning: {metric} value below min value, clamping to 0.")
+                                metric_value = self.metrics.get_metrics(self.temp_unit)[metric]
+                                min_val = self.metrics_min_value[metric]
+                                max_val = self.metrics_max_value[metric]
+                                factor = (metric_value - min_val) / (max_val - min_val)
+                                factor = max(0, min(1, factor)) # Clamp factor between 0 and 1
                     else:
                         start_color, end_color = split_color
-
-                        factor = 1 - abs((self.cpt%self.cycle_duration) - (self.cycle_duration/2)) / (self.cycle_duration/2)
+                        factor = 1 - abs((self.cpt % self.cycle_duration) - (self.cycle_duration / 2)) / (self.cycle_duration / 2)
                     
                     colors.append(interpolate_color(start_color, end_color, factor))
                 else:
