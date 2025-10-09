@@ -10,19 +10,32 @@ import os
 import sys
 
 
+digit_to_segments = {
+    0: ['a', 'b', 'c', 'd', 'e', 'f'],
+    1: ['b', 'c'],
+    2: ['a', 'b', 'g', 'e', 'd'],
+    3: ['a', 'b', 'g', 'c', 'd'],
+    4: ['f', 'g', 'b', 'c'],
+    5: ['a', 'f', 'g', 'c', 'd'],
+    6: ['a', 'f', 'g', 'e', 'c', 'd'],
+    7: ['a', 'b', 'c'],
+    8: ['a', 'b', 'c', 'd', 'e', 'f', 'g'],
+    9: ['a', 'b', 'g', 'f', 'c', 'd'],
+}
+
 digit_mask = np.array(
     [
-        [1, 1, 1, 0, 1, 1, 1],  # 0
-        [0, 0, 1, 0, 0, 0, 1],  # 1
-        [0, 1, 1, 1, 1, 1, 0],  # 2
-        [0, 1, 1, 1, 0, 1, 1],  # 3
-        [1, 0, 1, 1, 0, 0, 1],  # 4
-        [1, 1, 0, 1, 0, 1, 1],  # 5
-        [1, 1, 0, 1, 1, 1, 1],  # 6
-        [0, 1, 1, 0, 0, 0, 1],  # 7
+        [1, 1, 1, 1, 1, 1, 1],  # 0
+        [1, 1, 1, 1, 1, 1, 1],  # 1
+        [1, 1, 1, 1, 1, 1, 1],  # 2
+        [1, 1, 1, 1, 1, 1, 1],  # 3
+        [1, 1, 1, 1, 1, 1, 1],  # 4
+        [1, 1, 1, 1, 1, 1, 1],  # 5
+        [1, 1, 1, 1, 1, 1, 1],  # 6
+        [1, 1, 1, 1, 1, 1, 1],  # 7
         [1, 1, 1, 1, 1, 1, 1],  # 8
-        [1, 1, 1, 1, 0, 1, 1],  # 9
-        [0, 0, 0, 0, 0, 0, 0],  # nothing
+        [1, 1, 1, 1, 1, 1, 1],  # 9
+        [1, 1, 1, 1, 1, 1, 1],  # nothing
     ]
 )
 
@@ -69,6 +82,7 @@ class Controller:
         self.cycle_duration = 50
         self.display_mode = None
         self.colors = np.array(["ffe000"] * NUMBER_OF_LEDS)  # Will be set in update()
+        self.layout = self.load_layout()
         self.update()
 
     def load_config(self):
@@ -77,6 +91,15 @@ class Controller:
                 return json.load(f)
         except Exception as e:
             print(f"Error loading config: {e}")
+            return None
+
+    def load_layout(self):
+        try:
+            layout_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'layout.json')
+            with open(layout_path, 'r') as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"Error loading layout: {e}")
             return None
 
     def get_device(self):
@@ -117,6 +140,176 @@ class Controller:
             self.set_leds(device+'_percent_led', 1)
         else:
             raise Exception("The numbers displayed on the usage LCD must be less than 200")
+
+    def draw_number(self, number, num_digits, digits_mapping):
+        number_str = f"{number:0{num_digits}d}"
+        for i, digit_char in enumerate(number_str):
+            digit = int(digit_char)
+            segments_to_light = digit_to_segments[digit]
+            digit_map = digits_mapping[i]['map']
+            for segment_name in segments_to_light:
+                segment_index = digit_map[segment_name]
+                self.leds[segment_index] = 1
+
+    def display_dual_metrics(self):
+        if not self.layout:
+            print("Warning: layout.json not loaded. Cannot display dual metrics.")
+            return
+
+        cpu_unit = self.config.get('cpu_temperature_unit', 'celsius')
+        gpu_unit = self.config.get('gpu_temperature_unit', 'celsius')
+        temp_unit = {'cpu': cpu_unit, 'gpu': gpu_unit}
+
+        metrics = self.metrics.get_metrics(temp_unit=temp_unit)
+        cpu_temp = metrics.get("cpu_temp", 0)
+        cpu_usage = metrics.get("cpu_usage", 0)
+        gpu_temp = metrics.get("gpu_temp", 0)
+        gpu_usage = metrics.get("gpu_usage", 0)
+
+        # Draw CPU Temp
+        self.draw_number(cpu_temp, 3, self.layout['cpu_temp_digits'])
+        if cpu_unit == 'celsius':
+            self.leds[self.layout['cpu_celsius']] = 1
+        else:
+            self.leds[self.layout['cpu_fahrenheit']] = 1
+
+        # Draw CPU Usage
+        self.draw_number(cpu_usage % 100, 2, self.layout['cpu_usage_digits'])
+        if cpu_usage >= 100:
+            self.leds[self.layout['cpu_usage_1']['top']] = 1
+            self.leds[self.layout['cpu_usage_1']['bottom']] = 1
+        self.leds[self.layout['cpu_percent']] = 1
+
+        # Draw GPU Temp
+        self.draw_number(gpu_temp, 3, self.layout['gpu_temp_digits'])
+        if gpu_unit == 'celsius':
+            self.leds[self.layout['gpu_celsius']] = 1
+        else:
+            self.leds[self.layout['gpu_fahrenheit']] = 1
+
+        # Draw GPU Usage
+        self.draw_number(gpu_usage % 100, 2, self.layout['gpu_usage_digits'])
+        if gpu_usage >= 100:
+            self.leds[self.layout['gpu_usage_1']['top']] = 1
+            self.leds[self.layout['gpu_usage_1']['bottom']] = 1
+        self.leds[self.layout['gpu_percent']] = 1
+        
+        # Set CPU and GPU LEDs
+        for led in self.layout['cpu_led']:
+            self.leds[led] = 1
+        for led in self.layout['gpu_led']:
+            self.leds[led] = 1
+
+    def display_peerless_standard(self):
+        if not self.layout:
+            print("Warning: layout.json not loaded. Cannot display peerless standard.")
+            return
+
+        cpu_unit = self.config.get('cpu_temperature_unit', 'celsius')
+        gpu_unit = self.config.get('gpu_temperature_unit', 'celsius')
+        temp_unit = {'cpu': cpu_unit, 'gpu': gpu_unit}
+
+        metrics = self.metrics.get_metrics(temp_unit=temp_unit)
+        cpu_temp = metrics.get("cpu_temp", 0)
+        cpu_usage = metrics.get("cpu_usage", 0)
+        gpu_temp = metrics.get("gpu_temp", 0)
+        gpu_usage = metrics.get("gpu_usage", 0)
+
+        # Draw CPU Temp
+        self.draw_number(cpu_temp, 3, self.layout['cpu_temp_digits'])
+        if cpu_unit == 'celsius':
+            self.leds[self.layout['cpu_celsius']] = 1
+        else:
+            self.leds[self.layout['cpu_fahrenheit']] = 1
+
+        # Draw CPU Usage
+        self.draw_number(cpu_usage % 100, 2, self.layout['cpu_usage_digits'])
+        if cpu_usage >= 100:
+            self.leds[self.layout['cpu_usage_1']['top']] = 1
+            self.leds[self.layout['cpu_usage_1']['bottom']] = 1
+        self.leds[self.layout['cpu_percent']] = 1
+
+        # Draw GPU Temp
+        self.draw_number(gpu_temp, 3, self.layout['gpu_temp_digits'])
+        if gpu_unit == 'celsius':
+            self.leds[self.layout['gpu_celsius']] = 1
+        else:
+            self.leds[self.layout['gpu_fahrenheit']] = 1
+
+        # Draw GPU Usage
+        self.draw_number(gpu_usage % 100, 2, self.layout['gpu_usage_digits'])
+        if gpu_usage >= 100:
+            self.leds[self.layout['gpu_usage_1']['top']] = 1
+            self.leds[self.layout['gpu_usage_1']['bottom']] = 1
+        self.leds[self.layout['gpu_percent']] = 1
+        
+        # Set CPU and GPU LEDs
+        for led in self.layout['cpu_led']:
+            self.leds[led] = 1
+        for led in self.layout['gpu_led']:
+            self.leds[led] = 1
+
+    def display_peerless_temp(self):
+        if not self.layout:
+            print("Warning: layout.json not loaded. Cannot display peerless temp.")
+            return
+
+        cpu_unit = self.config.get('cpu_temperature_unit', 'celsius')
+        gpu_unit = self.config.get('gpu_temperature_unit', 'celsius')
+        temp_unit = {'cpu': cpu_unit, 'gpu': gpu_unit}
+
+        metrics = self.metrics.get_metrics(temp_unit=temp_unit)
+        cpu_temp = metrics.get("cpu_temp", 0)
+        gpu_temp = metrics.get("gpu_temp", 0)
+
+        # Draw CPU Temp
+        self.draw_number(cpu_temp, 3, self.layout['cpu_temp_digits'])
+        if cpu_unit == 'celsius':
+            self.leds[self.layout['cpu_celsius']] = 1
+        else:
+            self.leds[self.layout['cpu_fahrenheit']] = 1
+
+        # Draw GPU Temp
+        self.draw_number(gpu_temp, 3, self.layout['gpu_temp_digits'])
+        if gpu_unit == 'celsius':
+            self.leds[self.layout['gpu_celsius']] = 1
+        else:
+            self.leds[self.layout['gpu_fahrenheit']] = 1
+        
+        # Set CPU and GPU LEDs
+        for led in self.layout['cpu_led']:
+            self.leds[led] = 1
+        for led in self.layout['gpu_led']:
+            self.leds[led] = 1
+
+    def display_peerless_usage(self):
+        if not self.layout:
+            print("Warning: layout.json not loaded. Cannot display peerless usage.")
+            return
+
+        metrics = self.metrics.get_metrics(temp_unit=self.temp_unit)
+        cpu_usage = metrics.get("cpu_usage", 0)
+        gpu_usage = metrics.get("gpu_usage", 0)
+
+        # Draw CPU Usage
+        self.draw_number(cpu_usage % 100, 2, self.layout['cpu_usage_digits'])
+        if cpu_usage >= 100:
+            self.leds[self.layout['cpu_usage_1']['top']] = 1
+            self.leds[self.layout['cpu_usage_1']['bottom']] = 1
+        self.leds[self.layout['cpu_percent']] = 1
+
+        # Draw GPU Usage
+        self.draw_number(gpu_usage % 100, 2, self.layout['gpu_usage_digits'])
+        if gpu_usage >= 100:
+            self.leds[self.layout['gpu_usage_1']['top']] = 1
+            self.leds[self.layout['gpu_usage_1']['bottom']] = 1
+        self.leds[self.layout['gpu_percent']] = 1
+        
+        # Set CPU and GPU LEDs
+        for led in self.layout['cpu_led']:
+            self.leds[led] = 1
+        for led in self.layout['gpu_led']:
+            self.leds[led] = 1
 
     def display_metrics(self, devices=["cpu","gpu"]):
         self.temp_unit = {device: self.config.get(f"{device}_temperature_unit", "celsius")for device in ["cpu","gpu"]}
@@ -319,6 +512,14 @@ class Controller:
                     self.display_usage_small(device='cpu')
                 elif self.display_mode == "gpu_usage":
                     self.display_usage_small(device='gpu')
+                elif self.display_mode == "dual_metrics":
+                    self.display_dual_metrics()
+                elif self.display_mode == "peerless_standard":
+                    self.display_peerless_standard()
+                elif self.display_mode == "peerless_temp":
+                    self.display_peerless_temp()
+                elif self.display_mode == "peerless_usage":
+                    self.display_peerless_usage()
                 elif self.display_mode == "debug_ui":
                     self.colors = self.metrics_colors
                     self.leds[:] = 1

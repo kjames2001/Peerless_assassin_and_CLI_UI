@@ -43,6 +43,10 @@ display_modes_small = [
     "cpu_usage",
     "gpu_usage",
     "debug_ui",
+    "dual_metrics",
+    "peerless_standard",
+    "peerless_temp",
+    "peerless_usage",
 ]
 
 NUMBER_OF_LEDS = 84
