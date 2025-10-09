@@ -201,6 +201,7 @@ class Controller:
             self.leds[led] = 1
 
     def display_peerless_standard(self):
+        self.colors = self.metrics_colors
         if not self.layout:
             print("Warning: layout.json not loaded. Cannot display peerless standard.")
             return
@@ -250,6 +251,7 @@ class Controller:
             self.leds[led] = 1
 
     def display_peerless_temp(self):
+        self.colors = self.metrics_colors.copy()
         if not self.layout:
             print("Warning: layout.json not loaded. Cannot display peerless temp.")
             return
@@ -283,6 +285,7 @@ class Controller:
             self.leds[led] = 1
 
     def display_peerless_usage(self):
+        self.colors = self.metrics_colors
         if not self.layout:
             print("Warning: layout.json not loaded. Cannot display peerless usage.")
             return
@@ -420,6 +423,7 @@ class Controller:
                 "gpu_usage": self.config.get('gpu_min_usage', 0),
             }
             self.display_mode = self.config.get('display_mode', 'metrics')
+            self.temp_unit = {device: self.config.get(f"{device}_temperature_unit", "celsius") for device in ["cpu", "gpu"]}
             self.metrics_colors = self.get_config_colors(self.config, key="metrics")
             self.time_colors = self.get_config_colors(self.config, key="time")
             self.update_interval = self.config.get('update_interval', 0.1)

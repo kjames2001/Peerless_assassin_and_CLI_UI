@@ -58,7 +58,7 @@ class Metrics:
 
     def get_metrics(self, temp_unit):
         if time.time() - self.last_update < self.update_interval:
-            return self.metrics
+            metrics = self.metrics.copy()
         else:
             for metric, function in self.metrics_functions.items():
                 if function is not None:
@@ -71,10 +71,12 @@ class Metrics:
                     except Exception as e:
                         print(f"Error getting {metric}: {e}")
             self.last_update = time.time()
+            metrics = self.metrics.copy()
+
         for device in ["cpu", "gpu"]:
             if temp_unit[device] == "fahrenheit":
-                self.metrics[f"{device}_temp"] = int(self.metrics[f"{device}_temp"] * 9 / 5 + 32)
-        return self.metrics
+                metrics[f"{device}_temp"] = int(metrics[f"{device}_temp"] * 9 / 5 + 32)
+        return metrics
 
     def get_gpu_usage_amd(self):
         try:

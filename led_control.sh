@@ -143,6 +143,7 @@ show_color_menu() {
     echo -e "${GREEN}5)${NC} Set Metric-Based Colors (Temperature/Usage)"
     echo -e "${GREEN}6)${NC} Set Random Colors"
     echo -e "${GREEN}7)${NC} Set Time-Based Gradient"
+    echo -e "${GREEN}8)${NC} Color Presets"
     echo ""
     echo -e "${GREEN}0)${NC} Back to main menu"
     echo ""
@@ -190,7 +191,7 @@ set_all_leds_color() {
         esac
     fi
 
-    local json_color_array=$(printf '"%s",' $(seq 1 84) | sed 's/.$//' | sed "s/\"[0-9]*\"/${color}/g")
+    local json_color_array=$(printf ""%s"," $(for i in $(seq 1 84); do echo $color; done) | sed 's/.$//')
 
     if [ "$context" = "both" ] || [ "$context" = "metrics" ]; then
         jq --argjson colors "[$json_color_array]" '.metrics.colors = $colors' "$CONFIG_FILE" > "${CONFIG_FILE}.tmp" && mv "${CONFIG_FILE}.tmp" "$CONFIG_FILE"
@@ -342,19 +343,62 @@ change_led_colors() {
             color2=$(get_color_input "Enter end color")
 
             gradient="${color1}-${color2}-${time_unit}"
-            local json_array=$(for i in $(seq 1 84); do echo -n "\"${gradient}\","; done | sed 's/,$//')
+            local json_array=$(for i in $(seq 1 84); do echo -n ""${gradient}","; done | sed 's/,$//')
 
             jq --argjson colors "[$json_array]" '.time.colors = $colors' "$CONFIG_FILE" > "${CONFIG_FILE}.tmp" && mv "${CONFIG_FILE}.tmp" "$CONFIG_FILE"
 
             echo -e "${GREEN}Time-based gradient applied${NC}"
             sleep 2
             ;;
+        8) color_presets ;;
         0) return ;;
         *)
             echo -e "${RED}Invalid choice${NC}"
             sleep 2
             ;;
     esac
+}
+
+# Function to apply color presets
+color_presets() {
+    clear
+    echo -e "${CYAN}╔════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${CYAN}║     Color Presets                                        ║${NC}"
+    echo -e "${CYAN}╚════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    echo -e "${GREEN}1)${NC} Red"
+    echo -e "${GREEN}2)${NC} Green"
+    echo -e "${GREEN}3)${NC} Blue"
+    echo -e "${GREEN}4)${NC} White"
+    echo -e "${GREEN}5)${NC} Yellow"
+    echo -e "${GREEN}6)${NC} Cyan"
+    echo -e "${GREEN}7)${NC} Magenta"
+    echo ""
+    echo -e "${GREEN}0)${NC} Back to color menu"
+    echo ""
+
+    read -p "Select preset (0-7): " choice
+
+    local color
+    case $choice in
+        1) color="ff0000" ;;
+        2) color="00ff00" ;;
+        3) color="0000ff" ;;
+        4) color="ffffff" ;;
+        5) color="ffff00" ;;
+        6) color="00ffff" ;;
+        7) color="ff00ff" ;;
+        0) return ;;
+        *) echo -e "${RED}Invalid choice${NC}"; sleep 2; return ;;
+    esac
+
+    local json_color_array=$(printf "\"%s\"," $(for i in $(seq 1 84); do echo $color; done) | sed 's/.$//')
+
+    jq --argjson colors "[$json_color_array]" '.metrics.colors = $colors' "$CONFIG_FILE" > "${CONFIG_FILE}.tmp" && mv "${CONFIG_FILE}.tmp" "$CONFIG_FILE"
+    jq --argjson colors "[$json_color_array]" '.time.colors = $colors' "$CONFIG_FILE" > "${CONFIG_FILE}.tmp" && mv "${CONFIG_FILE}.tmp" "$CONFIG_FILE"
+
+    echo -e "${GREEN}All LEDs set to color: #$color${NC}"
+    sleep 2
 }
 
 # Function to configure temperature settings
