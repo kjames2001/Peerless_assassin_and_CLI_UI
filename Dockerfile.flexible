@@ -1,0 +1,65 @@
+# Use Python 3.11 slim image as base
+FROM python:3.11-slim
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    libhidapi-dev \
+    libhidapi-hidraw0 \
+    libhidapi-libusb0 \
+    libudev-dev \
+    jq \
+    usbutils \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create app directory
+WORKDIR /app
+
+# Copy project files
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy the rest of the application
+COPY . .
+
+# Make shell script executable if it exists
+RUN chmod +x led_control.sh 2>/dev/null || true
+
+# Create a non-root user for running the application
+RUN useradd -m -u 1000 peerless && \
+    chown -R peerless:peerless /app
+
+# Switch to non-root user
+USER peerless
+
+# Create an entrypoint script that auto-detects the main file
+RUN echo '#!/bin/bash\n\
+if [ -f "src/__main__.py" ]; then\n\
+    echo "Running as module: python -m src"\n\
+    exec python -m src "$@"\n\
+elif [ -f "src/main.py" ]; then\n\
+    echo "Running main.py"\n\
+    exec python src/main.py "$@"\n\
+elif [ -f "src/led_display_controller.py" ]; then\n\
+    echo "Running led_display_controller.py"\n\
+    exec python src/led_display_controller.py "$@"\n\
+elif [ "$#" -gt 0 ]; then\n\
+    echo "Running custom command: $@"\n\
+    exec python "$@"\n\
+else\n\
+    echo "No entry point found. Available files:"\n\
+    ls -la src/\n\
+    echo ""\n\
+    echo "Usage: docker run <image> <python_file>"\n\
+    echo "Example: docker run <image> src/led_display_ui.py"\n\
+    exit 1\n\
+fi' > /app/entrypoint.sh && chmod +x /app/entrypoint.sh
+
+# Use the entrypoint script
+ENTRYPOINT ["/app/entrypoint.sh"]
+CMD []

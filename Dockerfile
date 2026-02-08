@@ -20,17 +20,14 @@ RUN apt-get update && apt-get install -y \
 # Create app directory
 WORKDIR /app
 
-# Copy project files
-COPY requirements.txt pyproject.toml uv.lock ./
-COPY config.json layout.json peerless_layout.json ./
-COPY src/ ./src/
-COPY led_control.sh ./
+# Copy entire project
+COPY . .
 
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Make shell script executable
-RUN chmod +x led_control.sh
+RUN chmod +x led_control.sh 2>/dev/null || true
 
 # Create a non-root user for running the application
 RUN useradd -m -u 1000 peerless && \
@@ -39,8 +36,5 @@ RUN useradd -m -u 1000 peerless && \
 # Switch to non-root user
 USER peerless
 
-# Set the entrypoint to run Python from the app directory
-ENTRYPOINT ["python"]
-
-# Default command - run the main controller script
-CMD ["src/led_display_controller.py"]
+# Try to run as a module first (if __main__.py exists), otherwise list files for debugging
+ENTRYPOINT ["sh", "-c", "if [ -f src/__main__.py ]; then python -m src; else echo 'Available files in src/:'; ls -la src/; echo ''; echo 'Try running with: docker run <image> python src/<file>.py'; sleep infinity; fi"]
