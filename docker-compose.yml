@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  peerless-lcd:
+    # Replace 'yourusername' with your Docker Hub username
+    image: yourusername/peerless-assassin-lcd:latest
+    
+    # Or build locally instead of using a pre-built image
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
+    
+    container_name: peerless-lcd-controller
+    
+    # Required for USB device access
+    privileged: true
+    
+    # Mount USB devices
+    devices:
+      - /dev/bus/usb:/dev/bus/usb
+    
+    volumes:
+      # Mount system info for reading CPU/GPU temps and usage
+      - /sys:/sys:ro
+      
+      # Mount configuration file (customize as needed)
+      - ./config.json:/app/config.json:ro
+      
+      # Optional: Mount layout files if you want to modify them
+      # - ./layout.json:/app/layout.json:ro
+      # - ./peerless_layout.json:/app/peerless_layout.json:ro
+    
+    # Restart policy
+    restart: unless-stopped
+    
+    # Network mode (host network may be needed for some sensors)
+    # network_mode: host
+    
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    
+    # Environment variables (if needed)
+    # environment:
+    #   - DISPLAY_MODE=cpu_temp
+    #   - UPDATE_INTERVAL=1
+    
+    # Health check (optional)
+    # healthcheck:
+    #   test: ["CMD", "python", "-c", "import hid; print('ok')"]
+    #   interval: 30s
+    #   timeout: 10s
+    #   retries: 3
+    #   start_period: 10s
