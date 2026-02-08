@@ -5,9 +5,10 @@ FROM python:3.11-slim
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    DEBIAN_FRONTEND=noninteractive
 
-# Install system dependencies
+# Install system dependencies including GUI libraries
 RUN apt-get update && apt-get install -y \
     libhidapi-dev \
     libhidapi-hidraw0 \
@@ -15,6 +16,16 @@ RUN apt-get update && apt-get install -y \
     libudev-dev \
     jq \
     usbutils \
+    # X11 and GUI dependencies
+    python3-tk \
+    libx11-6 \
+    libxext6 \
+    libxrender1 \
+    libxtst6 \
+    libxi6 \
+    libfreetype6 \
+    libfontconfig1 \
+    x11-apps \
     && rm -rf /var/lib/apt/lists/*
 
 # Create app directory
@@ -39,8 +50,6 @@ RUN useradd -m -u 1000 peerless && \
 # Switch to non-root user
 USER peerless
 
-# Set the entrypoint to run Python from the app directory
+# Default to headless mode, can be overridden
 ENTRYPOINT ["python"]
-
-# Default command - run the main controller script
 CMD ["src/led_display_controller.py"]
